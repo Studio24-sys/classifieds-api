@@ -66,7 +66,7 @@ yarn dev
 
 ## Project Break Down
 
-**Breaking down the development of the classified marketplace app RESTful API into stages can help manage complexity and ensure a systematic approach to building out features.**
+**Breaking down the development of the classified marketplace RESTful API into stages can help manage complexity and ensure a systematic approach to building out features.**
 
 The project is broken down into the following stages:
 
