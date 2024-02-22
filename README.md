@@ -90,6 +90,27 @@ In this stage, we will focus on security, performance, and testing of the RESTfu
 ### Stage 6: Deployment and Monitoring
 In this stage, we will deploy the RESTful API to a production environment and set up monitoring tools to ensure that the platform is running smoothly and efficiently.
 
+## Project Structure
+
+Create a folder structure for your backend project:
+
+- src/
+  - controllers/
+    - authController.js
+    - userController.js
+  - middleware/
+    - authMiddleware.js
+  - routes/
+    - authRoutes.js
+    - userRoutes.js
+  - services/
+    - authService.js
+    - userService.js
+  - utils/
+    - emailService.js
+  - app.js
+  - server.js
+
 ## Status
 The project is currently in the first stage, which is the project setup and basic configuration.
 
