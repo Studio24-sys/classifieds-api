@@ -3,7 +3,7 @@
 This is the backend for the Quist app, a simple yet robust classified marketplace. It is a RESTful API built with Node.js and Express, Prisma and MySQL. It is designed to be easy to use and easy to extend.
 
 ## Goal
-The goal of this project is to provide a simple, yet robust, RESTful API for a classified marketplace, by carefully selecting and implementing features that match the needs and behaviors of the target audience, and can significantly enhance the user experience and success of your classified marketplace app. Remember, the key is to start with a solid foundation of essential features and then iteratively add and refine features based on user feedback and market demand. 
+The goal of this project is to provide a simple, yet robust, RESTful API for a classified marketplace, by carefully selecting and implementing features that match the needs and behaviors of the target audience, and can significantly enhance the user experience and success of the classified marketplace app. Remember, the key is to start with a solid foundation of essential features and then iteratively add and refine features based on user feedback and market demand. 
 
 
 ### Essential Features for a Classified Marketplace
