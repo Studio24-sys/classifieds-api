@@ -3,7 +3,7 @@
 import { validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { sendEmail } from '../utils/emailService.js';
 
 const registerUser = async (userData) => {
