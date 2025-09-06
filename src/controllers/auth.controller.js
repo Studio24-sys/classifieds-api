@@ -1,6 +1,6 @@
 // src/controllers/authController.js
 
-import { registerUser, loginUser, resetPassword, verifyEmail } from '../services/authService.js';
+import { registerUser, loginUser, resetPassword as resetPasswordService, verifyEmail as verifyEmailService } from '../services/auth.service.js';
 
 const register = async (req, res) => {
   try {
@@ -25,7 +25,7 @@ const login = async (req, res) => {
 const resetPassword = async (req, res) => {
   try {
     const email = req.body.email;
-    await resetPassword(email);
+    await resetPasswordService(email);
     res.json({ message: 'Password reset email sent' });
   } catch (error) {
     console.error('Error resetting password:', error);
@@ -36,7 +36,7 @@ const resetPassword = async (req, res) => {
 const verifyEmail = async (req, res) => {
   try {
     const email = req.body.email;
-    await verifyEmail(email);
+    await verifyEmailService(email);
     res.json({ message: 'Email verified successfully' });
   } catch (error) {
     console.error('Error verifying email:', error);

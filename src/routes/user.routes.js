@@ -1,8 +1,8 @@
 // userRoutes.js
 
 import express from 'express';
-import { getUserProfile, updateUserProfile, manageRoles } from '../controllers/userController.js';
-import authMiddleware from '../middleware/authMiddleware.js';
+import { getUserProfile, updateUserProfile, manageRoles } from '../controllers/user.controller.js';
+import { authMiddleware } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 

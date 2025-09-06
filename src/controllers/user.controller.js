@@ -1,11 +1,11 @@
 // src/controllers/userController.js
 
-import { getUserProfile, updateUserProfile, manageRoles } from '../services/userService.js';
+import { getUserProfile as getUserProfileService, updateUserProfile as updateUserProfileService, manageRoles as manageRolesService } from '../services/user.service.js';
 
 const getUserProfile = async (req, res) => {
   try {
     const userId = req.user; // Assuming userId is extracted from the JWT token
-    const userProfile = await getUserProfile(userId);
+    const userProfile = await getUserProfileService(userId);
     if (!userProfile) {
       return res.status(404).json({ error: 'User profile not found' });
     }
@@ -19,7 +19,7 @@ const getUserProfile = async (req, res) => {
 const updateUserProfile = async (req, res) => {
   try {
     const userId = req.user; // Assuming userId is extracted from the JWT token
-    const updatedUser = await updateUserProfile(userId, req.body);
+    const updatedUser = await updateUserProfileService(userId, req.body);
     res.json(updatedUser);
   } catch (error) {
     console.error('Error updating user profile:', error);
@@ -31,7 +31,7 @@ const manageRoles = async (req, res) => {
   try {
     const userId = req.params.userId;
     const newRoles = req.body.roles;
-    await manageRoles(userId, newRoles);
+    await manageRolesService(userId, newRoles);
     res.json({ message: 'Roles updated successfully' });
   } catch (error) {
     console.error('Error managing roles:', error);
