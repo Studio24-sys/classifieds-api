@@ -1,47 +1,53 @@
-// src/controllers/authController.js
+// src/controllers/auth.controller.js
+import {
+  registerUser,
+  loginUser,
+  resetPassword as resetPasswordSvc,
+  verifyEmail as verifyEmailSvc,
+} from '../services/auth.service.js';
 
-import { registerUser, loginUser, resetPassword as resetPasswordService, verifyEmail as verifyEmailService } from '../services/auth.service.js';
-
-const register = async (req, res) => {
+export async function register(req, res) {
   try {
     const user = await registerUser(req.body);
-    res.json(user);
+    return res.status(201).json(user);
   } catch (error) {
-    console.error('Error registering user:', error);
-    res.status(400).json({ error: 'Registration failed' });
+    console.error('Register error:', error);
+    const msg = typeof error?.message === 'string' ? error.message : String(error);
+    const status = error?.code === 'EMAIL_TAKEN' ? 409 : 500;
+    return res.status(status).json({ error: 'Registration failed', detail: msg });
   }
-};
+}
 
-const login = async (req, res) => {
+export async function login(req, res) {
   try {
-    const token = await loginUser(req.body);
-    res.json({ token });
+    const data = await loginUser(req.body);
+    return res.json(data);
   } catch (error) {
-    console.error('Error logging in:', error);
-    res.status(401).json({ error: 'Invalid credentials' });
+    console.error('Login error:', error);
+    const msg = typeof error?.message === 'string' ? error.message : String(error);
+    const status = error?.code === 'INVALID_CREDENTIALS' ? 401 : 500;
+    return res.status(status).json({ error: 'Login failed', detail: msg });
   }
-};
+}
 
-const resetPassword = async (req, res) => {
+export async function resetPassword(req, res) {
   try {
-    const email = req.body.email;
-    await resetPasswordService(email);
-    res.json({ message: 'Password reset email sent' });
+    await resetPasswordSvc(req.body?.email);
+    return res.json({ message: 'Password reset email sent' });
   } catch (error) {
-    console.error('Error resetting password:', error);
-    res.status(400).json({ error: 'Password reset failed' });
+    console.error('Reset error:', error);
+    const msg = typeof error?.message === 'string' ? error.message : String(error);
+    return res.status(400).json({ error: 'Password reset failed', detail: msg });
   }
-};
+}
 
-const verifyEmail = async (req, res) => {
+export async function verifyEmail(req, res) {
   try {
-    const email = req.body.email;
-    await verifyEmailService(email);
-    res.json({ message: 'Email verified successfully' });
+    await verifyEmailSvc(req.body?.email);
+    return res.json({ message: 'Email verified successfully' });
   } catch (error) {
-    console.error('Error verifying email:', error);
-    res.status(400).json({ error: 'Email verification failed' });
+    console.error('Verify error:', error);
+    const msg = typeof error?.message === 'string' ? error.message : String(error);
+    return res.status(400).json({ error: 'Email verification failed', detail: msg });
   }
-};
-
-export { register, login, resetPassword, verifyEmail };
+}
