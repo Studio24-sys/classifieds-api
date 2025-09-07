@@ -19,12 +19,8 @@ const apiLimiter = rateLimit({
   max: 100, // limit each IP to 100 requests per windowMs
 });
 
-app.get('/', (req, res) => {
-  res.json({ ok: true, message: 'Welcome to the API' });
-});
-
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, message: 'Server is alive' });
+  res.json({ ok: true, message: 'Server is Alive' });
 });
 app.use('/api/', apiLimiter);
 
