@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "postinstall": "rm -rf node_modules/.prisma && prisma generate --schema=src/prisma/schema.prisma && prisma db push --accept-data-loss"
+    "postinstall": "prisma generate --schema=src/prisma/schema.prisma && node -e \"process.exit(process.env.VERCEL?1:0)\" || prisma migrate deploy"
   },
   "author": {
     "name": "Samuel Oshio",
