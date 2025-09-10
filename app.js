@@ -1,31 +1,40 @@
 // app.js
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import setSecurityHeaders from './src/middleware/securityHeadersMiddleware.js';
+import dns from 'node:dns';
+import net from 'node:net';
 
+import setSecurityHeaders from './src/middleware/securityHeadersMiddleware.js';
 import authRoutes from './src/routes/auth.routes.js';
 import userRoutes from './src/routes/user.routes.js';
 
-// Prisma (used by /api/debug/db)
+// ---- Prisma client (uses DATABASE_URL by default) ----
 import prisma from './src/lib/prisma.js';
 
-// Extra debug tooling
-import dns from 'node:dns/promises';
-import net from 'node:net';
+// ---- PG (node-postgres) for direct connectivity probes ----
 import pg from 'pg';
 const { Pool } = pg;
 
+// Prefer IPv4 first on Vercel to avoid IPv6-only DNS answers
+dns.setDefaultResultOrder?.('ipv4first');
+
 const app = express();
 
-// ---------- Core middleware ----------
+// ---------------------------------------------------------------------
+// Core middleware
+// ---------------------------------------------------------------------
 app.use(express.json());
 app.use(setSecurityHeaders);
 
-// basic rate limit on all API routes
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+});
 app.use('/api/', apiLimiter);
 
-// ---------- Simple root + health ----------
+// ---------------------------------------------------------------------
+// Basic routes
+// ---------------------------------------------------------------------
 app.get('/', (_req, res) => {
   res.type('text/plain').send('Welcome to the API');
 });
@@ -34,147 +43,37 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, message: 'Server is alive' });
 });
 
-// ---------- DEBUG HELPERS ----------
-
-// /api/debug/env — shows parsed env WITHOUT secrets
+// ---------------------------------------------------------------------
+// DEBUG: ENV summary (safe, no secrets)
+// ---------------------------------------------------------------------
 app.get('/api/debug/env', (_req, res) => {
-  try {
-    const db = process.env.DATABASE_URL || '';
-    const dir = process.env.DIRECT_URL || '';
-    const redact = (u) => {
-      if (!u) return null;
-      try {
-        const url = new URL(u);
-        return {
-          protocol: url.protocol.replace(':', ''),
-          host: url.host,
-          pathname: url.pathname,
-          hasSSLMode: url.search.includes('sslmode='),
-        };
-      } catch {
-        return { rawStartsWith: u.slice(0, 12) };
-      }
-    };
-    res.json({
-      nodeEnv: process.env.NODE_ENV || null,
-      hasJwt: !!process.env.JWT_SECRET,
-      dbParsed: redact(db),
-      directParsed: redact(dir),
-      dbStartsWith: db ? db.slice(0, 12) : null,
-    });
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
-});
-
-// raw TCP connect helper
-function canConnectTCP(host, port, timeoutMs = 2500) {
-  return new Promise((resolve) => {
-    const socket = new net.Socket();
-    const done = (ok, err) => {
-      try { socket.destroy(); } catch {}
-      resolve({ ok, error: err ? String(err) : null });
-    };
-    socket.setTimeout(timeoutMs);
-    socket.once('connect', () => done(true, null));
-    socket.once('timeout', () => done(false, new Error('timeout')));
-    socket.once('error', (e) => done(false, e));
-    socket.connect(port, host);
-  });
-}
-
-// /api/debug/dns — DNS + TCP checks for pooled(6543) and direct(5432)
-app.get('/api/debug/dns', async (_req, res) => {
-  try {
-    const parse = (u) => {
-      try {
-        const url = new URL(u);
-        return { host: url.hostname };
-      } catch {
-        return null;
-      }
-    };
-
-    const pooled = parse(process.env.DATABASE_URL || '');
-    const direct = parse(process.env.DIRECT_URL || '');
-    const out = {
-      pooledHost: pooled?.host || null,
-      directHost: direct?.host || null,
-    };
-
-    if (pooled?.host) {
-      try {
-        const addrs = await dns.lookup(pooled.host, { all: true });
-        out.pooledDNS = addrs.map((a) => ({ address: a.address, family: a.family }));
-      } catch (e) {
-        out.pooledDNS = { error: String(e) };
-      }
-      out.pooledTCP6543 = await canConnectTCP(pooled.host, 6543);
-    }
-
-    if (direct?.host) {
-      try {
-        const addrs = await dns.lookup(direct.host, { all: true });
-        out.directDNS = addrs.map((a) => ({ address: a.address, family: a.family }));
-      } catch (e) {
-        out.directDNS = { error: String(e) };
-      }
-      out.directTCP5432 = await canConnectTCP(direct.host, 5432);
-    }
-
-    res.json(out);
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
-});
-
-// /api/debug/pg — try node-postgres against DATABASE_URL (pooled 6543)
-app.get('/api/debug/pg', async (_req, res) => {
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: 1,
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 5000,
-    ssl: { rejectUnauthorized: false },
-  });
-  try {
-    const client = await pool.connect();
+  const redact = (u) => {
+    if (!u) return null;
     try {
-      const r = await client.query('SELECT 1 as ok');
-      res.json({ ok: true, result: r.rows });
-    } finally {
-      client.release();
-      await pool.end();
+      const url = new URL(u);
+      return {
+        protocol: url.protocol.replace(':', ''),
+        host: url.host,
+        pathname: url.pathname,
+        hasSSLMode: url.search.includes('sslmode='),
+      };
+    } catch {
+      return { rawStartsWith: String(u).slice(0, 12) };
     }
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
+  };
 
-// /api/debug/pg-direct — try node-postgres against DIRECT_URL (5432)
-app.get('/api/debug/pg-direct', async (_req, res) => {
-  const pool = new Pool({
-    connectionString: process.env.DIRECT_URL,
-    max: 1,
-    idleTimeoutMillis: 5000,
-    connectionTimeoutMillis: 5000,
-    ssl: { rejectUnauthorized: false },
+  res.json({
+    nodeEnv: process.env.NODE_ENV || null,
+    hasJwt: !!process.env.JWT_SECRET,
+    dbParsed: redact(process.env.DATABASE_URL || ''),
+    directParsed: redact(process.env.DIRECT_URL || ''),
+    dbStartsWith: (process.env.DATABASE_URL || '').slice(0, 12) || null,
   });
-  try {
-    const client = await pool.connect();
-    try {
-      const r = await client.query('SELECT 1 as ok');
-      res.json({ ok: true, result: r.rows });
-    } finally {
-      client.release();
-      await pool.end();
-    }
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
 });
 
-// /api/debug/db — Prisma ping (uses whatever prisma is configured to use)
+// ---------------------------------------------------------------------
+// DEBUG: Prisma ping (serverless-friendly query)
+// ---------------------------------------------------------------------
 app.get('/api/debug/db', async (_req, res) => {
   try {
     const r = await prisma.$queryRaw`SELECT 1 as ok`;
@@ -184,15 +83,129 @@ app.get('/api/debug/db', async (_req, res) => {
   }
 });
 
-// ---------- Mount your real routes ----------
+// ---------------------------------------------------------------------
+// DEBUG: DNS + TCP checks (helps diagnose host/port/DNS issues)
+// ---------------------------------------------------------------------
+app.get('/api/debug/dns', async (_req, res) => {
+  const pooledUrl = process.env.DATABASE_URL || '';
+  const directUrl = process.env.DIRECT_URL || '';
+
+  const pooledHost = (() => {
+    try { return new URL(pooledUrl).hostname; } catch { return null; }
+  })();
+  const directHost = (() => {
+    try { return new URL(directUrl).hostname; } catch { return null; }
+  })();
+
+  const pooledPort = (() => {
+    try { return Number(new URL(pooledUrl).port) || 6543; } catch { return 6543; }
+  })();
+  const directPort = (() => {
+    try { return Number(new URL(directUrl).port) || 5432; } catch { return 5432; }
+  })();
+
+  const resolveWrap = (host) =>
+    new Promise((resolve) => {
+      if (!host) return resolve([]);
+      dns.resolve(host, (err, addrs) => resolve(err ? [{ error: String(err) }] : addrs.map(a => ({ address: a, family: a.includes(':') ? 6 : 4 }))));
+    });
+
+  const tcpProbe = (host, port, timeoutMs = 3000) =>
+    new Promise((resolve) => {
+      if (!host || !port) return resolve({ ok: false, error: 'missing host/port' });
+      const socket = net.connect({ host, port, timeout: timeoutMs }, () => {
+        socket.end();
+        resolve({ ok: true });
+      });
+      socket.on('error', (err) => resolve({ ok: false, error: String(err) }));
+      socket.on('timeout', () => {
+        socket.destroy();
+        resolve({ ok: false, error: 'timeout' });
+      });
+    });
+
+  const [pooledDNS, directDNS] = await Promise.all([
+    resolveWrap(pooledHost),
+    resolveWrap(directHost),
+  ]);
+
+  const [pooledTCP, directTCP] = await Promise.all([
+    tcpProbe(pooledHost, pooledPort),
+    tcpProbe(directHost, directPort),
+  ]);
+
+  res.json({
+    pooledHost,
+    directHost,
+    pooledDNS,
+    pooledTCP6543: pooledTCP,
+    directDNS,
+    directTCP5432: directTCP,
+  });
+});
+
+// ---------------------------------------------------------------------
+// DEBUG: PG via DATABASE_URL (pooled)
+// ---------------------------------------------------------------------
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL, // should be *.pooler.supabase.com:6543
+  max: 2,
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 5_000,
+  ssl: { rejectUnauthorized: false },
+});
+
+app.get('/api/debug/pg', async (_req, res) => {
+  try {
+    const client = await pgPool.connect();
+    try {
+      const r = await client.query('SELECT 1 as ok');
+      res.json({ ok: true, result: r.rows });
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------
+// DEBUG: PG via DIRECT_URL (5432) — for comparison
+// ---------------------------------------------------------------------
+const pgDirectPool = new Pool({
+  connectionString: process.env.DIRECT_URL, // should be db.<ref>.supabase.co:5432
+  max: 2,
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 5_000,
+  ssl: { rejectUnauthorized: false },
+});
+
+app.get('/api/debug/pg-direct', async (_req, res) => {
+  try {
+    const client = await pgDirectPool.connect();
+    try {
+      const r = await client.query('SELECT 1 as ok');
+      res.json({ ok: true, result: r.rows });
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// ---------------------------------------------------------------------
+// Business routes
+// ---------------------------------------------------------------------
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 
-// ---------- Vercel-friendly export ----------
+// Vercel-friendly: export app; only listen locally
 const PORT = process.env.PORT || 3000;
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
   });
 }
+
 export default app;
