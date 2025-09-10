@@ -5,6 +5,8 @@ import setSecurityHeaders from './src/middleware/securityHeadersMiddleware.js';
 import authRoutes from './src/routes/auth.routes.js';
 import userRoutes from './src/routes/user.routes.js';
 import prisma from './src/lib/prisma.js'; // used by /api/debug/db
+import pg from 'pg'; // <-- node-postgres for connectivity probe
+const { Pool } = pg;
 
 const app = express();
 
@@ -31,7 +33,7 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, message: 'Server is alive' });
 });
 
-// ---------- DEBUG HELPERS (safe to keep while we’re wiring DB) ----------
+// ---------- DEBUG HELPERS ----------
 
 // QUICK ENV DEBUG (safe: hides secrets)
 app.get('/api/debug/env', (req, res) => {
@@ -49,8 +51,7 @@ app.get('/api/debug/env', (req, res) => {
           hasSSLMode: url.search.includes('sslmode='),
         };
       } catch {
-        // Shows whether it's "postgresql://" vs "file:./dev"
-        return { rawStartsWith: u.slice(0, 12) };
+        return { rawStartsWith: u.slice(0, 12) }; // shows "postgresql://" vs "file:./dev"
       }
     };
     res.json({
@@ -65,11 +66,34 @@ app.get('/api/debug/env', (req, res) => {
   }
 });
 
-// QUICK DB PING (serverless-friendly)
+// QUICK DB PING (Prisma)
 app.get('/api/debug/db', async (_req, res) => {
   try {
     const r = await prisma.$queryRaw`SELECT 1 as ok`;
     res.json({ ok: true, result: r });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// ---- PG (node-postgres) connectivity probe ----
+const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 2, // small pool for serverless
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 5_000,
+  ssl: { rejectUnauthorized: false }, // Supabase requires SSL
+});
+
+app.get('/api/debug/pg', async (_req, res) => {
+  try {
+    const client = await pgPool.connect();
+    try {
+      const r = await client.query('SELECT 1 as ok');
+      res.json({ ok: true, result: r.rows });
+    } finally {
+      client.release();
+    }
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
   }
