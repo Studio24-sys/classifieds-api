@@ -1,13 +1,14 @@
 // src/prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  url       = env("DATABASE_URL")  // use pooler (6543) 
+  directUrl = env("DIRECT_URL")    // use direct (5432)
 }
 
 model User {

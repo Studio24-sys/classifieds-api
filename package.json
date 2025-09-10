@@ -14,6 +14,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@prisma/adapter-pg": "^6.16.0",
     "@prisma/client": "^5.10.1",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
