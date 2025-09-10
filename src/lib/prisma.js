@@ -1,45 +1,27 @@
 // src/lib/prisma.js
 import { PrismaClient } from '@prisma/client';
 
-let prismaSingleton = null;
-
-/**
- * Returns a Prisma client.
- * On Vercel, if USE_PG_ADAPTER=1, use the Prisma PG driver adapter.
- * Otherwise, use the default Prisma engine.
- */
-export function getPrisma() {
-  if (prismaSingleton) return prismaSingleton;
-
-  const useAdapter = process.env.USE_PG_ADAPTER === '1';
-
-  if (useAdapter) {
-    // Lazy-require adapter + pg only when asked for
-    // (avoids crashing /api/health at cold start)
-    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
-    const { PrismaPg } = require('@prisma/adapter-pg');
-    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
-    const pg = require('pg');
-    const { Pool } = pg;
-
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error('DATABASE_URL is missing');
-    }
-
-    const pool = new Pool({
-      connectionString,
-      max: 2,
-      idleTimeoutMillis: 10_000,
-      connectionTimeoutMillis: 5_000,
-      ssl: { rejectUnauthorized: false },
-    });
-
-    const adapter = new PrismaPg(pool);
-    prismaSingleton = new PrismaClient({ adapter });
-  } else {
-    prismaSingleton = new PrismaClient();
-  }
-
-  return prismaSingleton;
+function createClient() {
+  // Keep logs quiet in prod, verbose in dev
+  const log =
+    process.env.NODE_ENV === 'development'
+      ? ['query', 'warn', 'error']
+      : ['error'];
+  return new PrismaClient({ log });
 }
+
+// Reuse a single instance across hot-reloads/serverless invocations
+const globalAny = globalThis;
+
+// If already created, reuse it; otherwise create and cache on global
+const prisma =
+  globalAny.__PRISMA_CLIENT__ || (globalAny.__PRISMA_CLIENT__ = createClient());
+
+// Named + default exports so BOTH styles work:
+//   import prisma from '../lib/prisma.js'
+//   import { prisma, getPrisma } from '../lib/prisma.js'
+export { prisma };
+export function getPrisma() {
+  return prisma;
+}
+export default prisma;
