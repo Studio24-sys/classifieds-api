@@ -4,7 +4,6 @@ import rateLimit from 'express-rate-limit';
 import setSecurityHeaders from './src/middleware/securityHeadersMiddleware.js';
 import authRoutes from './src/routes/auth.routes.js';
 import userRoutes from './src/routes/user.routes.js';
-import { getPrisma } from './src/lib/prisma.js'; // ✅ lazy adapter import
 
 const app = express();
 
@@ -26,13 +25,13 @@ app.get('/', (_req, res) => {
   res.type('text/plain').send('Welcome to the API');
 });
 
-// Health
+// Health — MUST NOT TOUCH DB
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, message: 'Server is alive' });
 });
 
-// ---------- DEBUG HELPERS ----------
-app.get('/api/debug/env', (req, res) => {
+// ---------- DEBUG HELPERS (NO CRASH ON STARTUP) ----------
+app.get('/api/debug/env', (_req, res) => {
   try {
     const db = process.env.DATABASE_URL || '';
     const dir = process.env.DIRECT_URL || '';
@@ -62,9 +61,10 @@ app.get('/api/debug/env', (req, res) => {
   }
 });
 
-// ✅ New: DB debug with pg adapter or Prisma fallback
+// DB ping (lazy import so startup never crashes)
 app.get('/api/debug/db', async (_req, res) => {
   try {
+    const { getPrisma } = await import('./src/lib/prisma.js'); // lazy
     const prisma = getPrisma();
     const r = await prisma.$queryRaw`SELECT 1 as ok`;
     res.json({ ok: true, result: r });
@@ -72,9 +72,35 @@ app.get('/api/debug/db', async (_req, res) => {
     res.status(500).json({ ok: false, error: String(e) });
   }
 });
-// ----------------------------------
 
-// Routes
+// Optional: direct pg probe (also lazy, safe to keep)
+// Shows if Node can open a socket to the DB host/port
+app.get('/api/debug/pg', async (_req, res) => {
+  try {
+    const pg = await import('pg');
+    const { Pool } = pg.default ?? pg;
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 2,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 5_000,
+      ssl: { rejectUnauthorized: false },
+    });
+    const client = await pool.connect();
+    try {
+      const r = await client.query('SELECT 1 as ok');
+      res.json({ ok: true, result: r.rows });
+    } finally {
+      client.release();
+      pool.end();
+    }
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+// --------------------------------------------------------
+
+// Mount routes (these may use Prisma internally via their files)
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 

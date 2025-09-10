@@ -1,52 +1,45 @@
 // src/lib/prisma.js
 import { PrismaClient } from '@prisma/client';
 
-let prisma = global._prisma;
+let prismaSingleton = null;
 
 /**
- * Lazy, crash-safe Prisma init.
- * - On Vercel (or when USE_PG_ADAPTER=1), use the pg driver adapter.
- * - Else (local), use default Prisma client.
+ * Returns a Prisma client.
+ * On Vercel, if USE_PG_ADAPTER=1, use the Prisma PG driver adapter.
+ * Otherwise, use the default Prisma engine.
  */
 export function getPrisma() {
-  if (prisma) return prisma;
+  if (prismaSingleton) return prismaSingleton;
 
-  const usePgAdapter = process.env.VERCEL || process.env.USE_PG_ADAPTER === '1';
+  const useAdapter = process.env.USE_PG_ADAPTER === '1';
 
-  if (usePgAdapter) {
-    try {
-      // Defer heavy imports to runtime to avoid boot crashes
-      const pg = require('pg'); // dynamic require keeps edge cases away at import time
-      const { PrismaPg } = require('@prisma/adapter-pg');
+  if (useAdapter) {
+    // Lazy-require adapter + pg only when asked for
+    // (avoids crashing /api/health at cold start)
+    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+    const { PrismaPg } = require('@prisma/adapter-pg');
+    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+    const pg = require('pg');
+    const { Pool } = pg;
 
-      const { Pool } = pg;
-
-      const pooledUrl = process.env.DATABASE_URL;
-      if (!pooledUrl) {
-        throw new Error('DATABASE_URL is missing');
-      }
-
-      const pool = new Pool({
-        connectionString: pooledUrl,
-        max: 2,
-        idleTimeoutMillis: 10_000,
-        connectionTimeoutMillis: 5_000,
-        ssl: { rejectUnauthorized: false },
-      });
-
-      const adapter = new PrismaPg(pool);
-      prisma = new PrismaClient({ adapter });
-    } catch (e) {
-      // Fall back to plain client so the function still boots and we can see errors via /api/debug/env
-      console.error('PG adapter bootstrap failed, falling back to plain Prisma:', e);
-      prisma = new PrismaClient();
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error('DATABASE_URL is missing');
     }
+
+    const pool = new Pool({
+      connectionString,
+      max: 2,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 5_000,
+      ssl: { rejectUnauthorized: false },
+    });
+
+    const adapter = new PrismaPg(pool);
+    prismaSingleton = new PrismaClient({ adapter });
   } else {
-    prisma = new PrismaClient();
+    prismaSingleton = new PrismaClient();
   }
 
-  global._prisma = prisma;
-  return prisma;
+  return prismaSingleton;
 }
-
-export default getPrisma();
