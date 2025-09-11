@@ -3,15 +3,17 @@ import jwt from 'jsonwebtoken';
 
 export function requireAuth(req, res, next) {
   const hdr = req.headers.authorization || '';
-  const parts = hdr.split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+  const [scheme, token] = hdr.split(' ');
+
+  if (scheme !== 'Bearer' || !token) {
     return res.status(401).json({ error: 'Missing token' });
   }
+
   try {
-    const payload = jwt.verify(parts[1], process.env.JWT_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = payload.userId;
-    next();
-  } catch {
+    return next();
+  } catch (e) {
     return res.status(403).json({ error: 'Invalid token' });
   }
 }

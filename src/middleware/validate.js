@@ -1,18 +1,20 @@
 // src/middleware/validate.js
-export const validate = (schema) => (req, res, next) => {
-  const parsed = schema.safeParse({
-    body: req.body,
-    params: req.params,
-    query: req.query,
-  });
-  if (!parsed.success) {
-    return res.status(400).json({
-      error: 'VALIDATION_FAILED',
-      details: parsed.error.flatten(),
-    });
-  }
-  if (parsed.data.body) req.body = parsed.data.body;
-  if (parsed.data.params) req.params = parsed.data.params;
-  if (parsed.data.query) req.query = parsed.data.query;
-  next();
-};
+
+/**
+ * Validate that specific body fields exist and are non-empty strings.
+ * Usage: app.post('/route', validateBody(['email','password']), handler)
+ */
+export function validateBody(requiredKeys = []) {
+  return (req, res, next) => {
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ error: 'BAD_REQUEST', detail: 'Body must be JSON object' });
+    }
+    for (const key of requiredKeys) {
+      const v = req.body[key];
+      if (typeof v !== 'string' || v.trim() === '') {
+        return res.status(400).json({ error: 'BAD_REQUEST', detail: `Missing or empty field: ${key}` });
+      }
+    }
+    next();
+  };
+}
