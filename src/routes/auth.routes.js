@@ -7,7 +7,7 @@ import prisma from '../lib/prisma.js';
 
 const router = express.Router();
 
-// tiny helpers
+// helpers
 const requireBody = (obj, keys) => {
   for (const k of keys) if (!obj?.[k]) return `Missing field: ${k}`;
   return null;
@@ -22,9 +22,7 @@ router.post('/register', async (req, res) => {
     if (err) return res.status(400).json({ error: err });
     const { email, password } = req.body;
 
-    if (!isStrong(password)) {
-      return res.status(400).json({ error: 'WEAK_PASSWORD' });
-    }
+    if (!isStrong(password)) return res.status(400).json({ error: 'WEAK_PASSWORD' });
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(409).json({ error: 'EMAIL_TAKEN' });
@@ -72,7 +70,7 @@ router.post('/request-reset', async (req, res) => {
     const { email } = req.body;
 
     const user = await prisma.user.findUnique({ where: { email } });
-    // Always return ok (don’t leak whether email exists)
+    // Always return ok to avoid email enumeration
     if (!user) return res.json({ ok: true });
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -82,10 +80,7 @@ router.post('/request-reset', async (req, res) => {
       data: { userId: user.id, token, expiresAt },
     });
 
-    // In production you’d email a link:
-    // `${process.env.FRONTEND_ORIGIN}/reset?token=${token}`
-    // For now we DON’T return it; you can fetch via psql like you did.
-
+    // In production: email `${process.env.FRONTEND_ORIGIN}/reset?token=${token}`
     return res.json({ ok: true });
   } catch (e) {
     return res.status(500).json({ error: 'REQUEST_RESET_FAILED', detail: String(e) });
@@ -99,9 +94,7 @@ router.post('/reset-password', async (req, res) => {
     if (err) return res.status(400).json({ error: err });
 
     const { token, newPassword } = req.body;
-    if (!isStrong(newPassword)) {
-      return res.status(400).json({ error: 'WEAK_PASSWORD' });
-    }
+    if (!isStrong(newPassword)) return res.status(400).json({ error: 'WEAK_PASSWORD' });
 
     const row = await prisma.passwordResetToken.findUnique({ where: { token } });
     if (!row) return res.status(400).json({ error: 'BAD_TOKEN' });
