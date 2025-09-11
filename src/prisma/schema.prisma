@@ -1,4 +1,6 @@
-// src/prisma/schema.prisma
+// =============================
+// Prisma schema
+// =============================
 
 generator client {
   provider = "prisma-client-js"
@@ -7,24 +9,44 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
-/// --- MODELS ---
+// =============================
+// Models
+// =============================
 
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
   password  String
-  name      String?                // <-- add this
-  createdAt DateTime @default(now()) // <-- and this
+  name      String?
+  createdAt DateTime @default(now())
+
   posts     Post[]
+
+  // Reset tokens
+  resetTokens PasswordResetToken[]
 }
 
 model Post {
   id        String   @id @default(cuid())
   title     String
-  content   String?
+  content   String
   authorId  String
   author    User     @relation(fields: [authorId], references: [id])
   createdAt DateTime @default(now())
+
+  @@index([authorId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
