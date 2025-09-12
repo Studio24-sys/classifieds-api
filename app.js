@@ -1,65 +1,58 @@
 import express from 'express';
-import bodyParser from 'body-parser';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
+import morgan from 'morgan';
+import dotenv from 'dotenv';
 
-import authRoutes from './src/routes/auth.routes.js';
-import userRoutes from './src/routes/user.routes.js';
-import postRoutes from './src/routes/posts.routes.js';
-import prisma from './src/lib/prisma.js';
+// load env
+dotenv.config();
 
 const app = express();
 
-// ----- CORS (locked to your frontend origin or allow no-origin like curl) -----
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://your-frontend.example.com';
+// ---------- CORS CONFIG ----------
+const allowed = (process.env.FRONTEND_ORIGIN || 'http://localhost:3000')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // allow curl/postman
-    if (origin === FRONTEND_ORIGIN) return cb(null, true);
-    return cb(new Error('Not allowed by CORS'));
+const corsOptions = {
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);              // allow curl/vercel/health
+    if (allowed.includes(origin)) return cb(null, true);
+    return cb(null, false);                          // deny silently, no crash
   },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: false,
-}));
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
 
-app.use(bodyParser.json());
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+// ----------------------------------
 
-// ----- Rate limits -----
-const globalLimiter = rateLimit({ windowMs: 60 * 1000, max: 300 });
-app.use(globalLimiter);
+// logging
+app.use(morgan('dev'));
+app.use(express.json());
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 50 });
-app.use('/api/auth', authLimiter);
-
-const writeLimiter = rateLimit({ windowMs: 60 * 1000, max: 60 });
-app.use(['/api/posts'], writeLimiter);
-
-// ----- Health -----
-app.get('/api/health', (_req, res) => {
+// health check
+app.get('/api/health', (req, res) => {
   res.json({ ok: true, message: 'Server is alive' });
 });
 
-// ----- Debug DB (Prisma) -----
-app.get('/api/debug/db', async (_req, res) => {
-  try {
-    const r = await prisma.$queryRaw`SELECT 1 as ok`;
-    res.json({ ok: true, result: r });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: String(err) });
-  }
-});
-
-// ----- Routes -----
+// routes
+import postsRoutes from './src/routes/posts.routes.js';
+import authRoutes from './src/routes/auth.routes.js';
+app.use('/api/posts', postsRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/posts', postRoutes);
 
-// Local dev vs Vercel
-const PORT = process.env.PORT || 3000;
+// export for vercel
+export default app;
+
+// local dev listener
 if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 4000;
   app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
-
-export default app;
