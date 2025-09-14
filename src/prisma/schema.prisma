@@ -35,6 +35,10 @@ model Post {
   content   String
   authorId  String
   author    User     @relation(fields: [authorId], references: [id])
+  barrio     String?   // p.ej. "Lambaré", "Villa Morra"
+  pricePyg   Int?      // precio en guaraníes (PYG)
+  contactWhatsapp String?
+
   createdAt DateTime @default(now())
 
   @@index([authorId])

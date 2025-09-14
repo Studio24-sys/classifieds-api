@@ -1,19 +1,35 @@
-// Simple validation helper with detailed messages
-export function requireFields(fields) {
-  return (req, res, next) => {
-    const missing = [];
-    for (const f of fields) {
-      const v = req.body?.[f];
-      if (v === undefined || v === null || (typeof v === 'string' && v.trim() === '')) {
-        missing.push(f);
-      }
+// Lightweight validators with useful messages
+
+export function requireString(field, min = 1, max = 1000) {
+  return (v, errors) => {
+    if (typeof v !== 'string') {
+      errors.push(`${field} must be a string`);
+      return;
     }
-    if (missing.length) {
-      return res.status(400).json({
-        error: 'VALIDATION_ERROR',
-        detail: missing.map((f) => ({ field: f, message: `${f} is required` })),
-      });
-    }
-    next();
+    const trimmed = v.trim();
+    if (trimmed.length < min) errors.push(`${field} must be at least ${min} characters`);
+    if (trimmed.length > max) errors.push(`${field} must be at most ${max} characters`);
   };
+}
+
+export function isEmail(field = 'email') {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+  return (v, errors) => {
+    if (typeof v !== 'string' || !re.test(v)) errors.push(`${field} must be a valid email`);
+  };
+}
+
+export function validate(body, shape) {
+  const errors = [];
+  for (const [key, rules] of Object.entries(shape)) {
+    const val = body[key];
+    for (const rule of rules) rule(val, errors);
+  }
+  if (errors.length) {
+    const err = new Error('Validation failed');
+    err.status = 400;
+    err.expose = true;
+    err.payload = { errors };
+    throw err;
+  }
 }
