@@ -1,3 +1,3 @@
-// api/index.js (ESM entry for Vercel)
+// api/index.js
 import app from '../app.js';
 export default app;
