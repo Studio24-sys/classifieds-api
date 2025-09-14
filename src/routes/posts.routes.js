@@ -1,39 +1,47 @@
-import { Router } from 'express';
+import express from 'express';
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
-const router = Router();
+const router = express.Router();
 
-// GET /api/posts
-router.get('/', async (req, res) => {
-  const page  = Number(req.query.page ?? 1);
-  const limit = Number(req.query.limit ?? 10);
-  const items = await prisma.post.findMany({
-    skip: (page - 1) * limit,
-    take: limit,
-    orderBy: { createdAt: 'desc' },
-    include: { author: { select: { id: true, email: true } } },
-  });
-  const total = await prisma.post.count();
-  res.json({ page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)), items });
-});
+// GET / (existing) … keep as you have it
 
-// POST /api/posts (needs auth middleware before if you use one)
+// CREATE post (hardened)
 router.post('/', async (req, res) => {
   try {
-    const { title, content, barrio, pricePyg, contactWhatsapp } = req.body ?? {};
-    if (!title || !content) return res.status(400).json({ error: 'MISSING_FIELDS' });
+    if (!req.auth?.userId) {
+      return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    }
 
-    // userId comes from your auth middleware (req.auth.userId) or similar
-    const userId = req.auth?.userId || req.userId || req.body.userId; // adapt to your jwt middleware
-    if (!userId) return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    const { title, content, barrio, pricePyg, contactWhatsapp } = req.body;
 
-    const post = await prisma.post.create({
-      data: { title, content, barrio, pricePyg, contactWhatsapp, authorId: userId },
-    });
-    res.status(201).json(post);
+    if (!title || !content) {
+      return res.status(400).json({ error: 'MISSING_FIELDS', fields: ['title', 'content'] });
+    }
+
+    const data = {
+      title: String(title).slice(0, 200),
+      content: String(content).slice(0, 10000),
+      authorId: req.auth.userId,
+    };
+
+    if (barrio) data.barrio = String(barrio).slice(0, 100);
+
+    if (pricePyg !== undefined && pricePyg !== null && String(pricePyg).trim() !== '') {
+      const n = Number(pricePyg);
+      if (Number.isFinite(n) && n >= 0) data.pricePyg = Math.trunc(n);
+    }
+
+    if (contactWhatsapp) {
+      // keep only digits, trim to reasonable length
+      const digits = String(contactWhatsapp).replace(/\D/g, '').slice(0, 20);
+      if (digits) data.contactWhatsapp = digits;
+    }
+
+    const created = await prisma.post.create({ data });
+    return res.status(201).json(created);
   } catch (e) {
     console.error('POST /api/posts error:', e);
-    res.status(500).json({ error: 'INTERNAL_ERROR' });
+    return res.status(500).json({ error: 'INTERNAL_ERROR', detail: e?.message || 'unknown' });
   }
 });
 
