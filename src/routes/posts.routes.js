@@ -4,7 +4,6 @@ import { requireAuth } from '../utils/requireAuth.js';
 
 const router = Router();
 
-// GET /api/posts?page=1&limit=10
 router.get('/', async (req, res) => {
   const page = Math.max(parseInt(req.query.page ?? '1', 10), 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit ?? '10', 10), 1), 50);
@@ -21,15 +20,12 @@ router.get('/', async (req, res) => {
   ]);
 
   res.json({
-    page,
-    limit,
-    total,
+    page, limit, total,
     totalPages: Math.max(Math.ceil(total / limit), 1),
     items,
   });
 });
 
-// GET /api/posts/:id
 router.get('/:id', async (req, res) => {
   const post = await prisma.post.findUnique({
     where: { id: req.params.id },
@@ -39,13 +35,9 @@ router.get('/:id', async (req, res) => {
   res.json(post);
 });
 
-// POST /api/posts (auth)
 router.post('/', requireAuth, async (req, res) => {
   const { title, content, barrio, pricePyg, contactWhatsapp } = req.body;
-
-  if (!title || !content) {
-    return res.status(400).json({ error: 'VALIDATION', details: 'title and content are required' });
-  }
+  if (!title || !content) return res.status(400).json({ error: 'VALIDATION' });
 
   const newPost = await prisma.post.create({
     data: {
@@ -60,7 +52,6 @@ router.post('/', requireAuth, async (req, res) => {
   res.status(201).json(newPost);
 });
 
-// PUT /api/posts/:id (auth; own posts)
 router.put('/:id', requireAuth, async (req, res) => {
   const existing = await prisma.post.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -80,7 +71,6 @@ router.put('/:id', requireAuth, async (req, res) => {
   res.json(updated);
 });
 
-// DELETE /api/posts/:id (auth; own posts)
 router.delete('/:id', requireAuth, async (req, res) => {
   const existing = await prisma.post.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'NOT_FOUND' });
