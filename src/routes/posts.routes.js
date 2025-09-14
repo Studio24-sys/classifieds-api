@@ -1,30 +1,30 @@
-import express from 'express';
-import prisma from '../lib/prisma.js';
-import { requireAuth } from '../middleware/auth.js';
-import { requireFields } from '../middleware/validate.js';
+import { Router } from 'express';
+import { prisma } from '../prisma/client.js';
+import { requireAuth } from '../utils/requireAuth.js';
 
-const router = express.Router();
+const router = Router();
 
-// GET /api/posts  (paginated)
+// GET /api/posts?page=1&limit=10
 router.get('/', async (req, res) => {
-  const take = Math.min(Math.max(parseInt(req.query.limit ?? '10', 10), 1), 50); // clamp 1..50
   const page = Math.max(parseInt(req.query.page ?? '1', 10), 1);
-  const skip = (page - 1) * take;
+  const limit = Math.min(Math.max(parseInt(req.query.limit ?? '10', 10), 1), 50);
+  const skip = (page - 1) * limit;
 
-  const [items, total] = await Promise.all([
+  const [total, items] = await Promise.all([
+    prisma.post.count(),
     prisma.post.findMany({
-      skip, take,
+      skip,
+      take: limit,
       orderBy: { createdAt: 'desc' },
       include: { author: { select: { id: true, email: true } } },
     }),
-    prisma.post.count(),
   ]);
 
   res.json({
     page,
-    limit: take,
+    limit,
     total,
-    totalPages: Math.ceil(total / take),
+    totalPages: Math.max(Math.ceil(total / limit), 1),
     items,
   });
 });
@@ -35,54 +35,58 @@ router.get('/:id', async (req, res) => {
     where: { id: req.params.id },
     include: { author: { select: { id: true, email: true } } },
   });
-  if (!post) return res.status(404).json({ error: 'Post not found' });
+  if (!post) return res.status(404).json({ error: 'NOT_FOUND' });
   res.json(post);
 });
 
-// POST /api/posts
-router.post(
-  '/',
-  requireAuth,
-  requireFields(['title', 'content']),
-  async (req, res) => {
-    const { title, content } = req.body;
-    const post = await prisma.post.create({
-      data: { title, content, authorId: req.userId },
-    });
-    res.status(201).json(post);
+// POST /api/posts (auth)
+router.post('/', requireAuth, async (req, res) => {
+  const { title, content, barrio, pricePyg, contactWhatsapp } = req.body;
+
+  if (!title || !content) {
+    return res.status(400).json({ error: 'VALIDATION', details: 'title and content are required' });
   }
-);
 
-// PUT /api/posts/:id
-router.put(
-  '/:id',
-  requireAuth,
-  requireFields(['title', 'content']),
-  async (req, res) => {
-    const { id } = req.params;
-    const { title, content } = req.body;
+  const newPost = await prisma.post.create({
+    data: {
+      title,
+      content,
+      barrio: barrio ?? null,
+      pricePyg: typeof pricePyg === 'number' ? pricePyg : null,
+      contactWhatsapp: contactWhatsapp ?? null,
+      authorId: req.userId,
+    },
+  });
+  res.status(201).json(newPost);
+});
 
-    const post = await prisma.post.findUnique({ where: { id } });
-    if (!post) return res.status(404).json({ error: 'Post not found' });
-    if (post.authorId !== req.userId) return res.status(403).json({ error: 'Not your post' });
+// PUT /api/posts/:id (auth; own posts)
+router.put('/:id', requireAuth, async (req, res) => {
+  const existing = await prisma.post.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: 'NOT_FOUND' });
+  if (existing.authorId !== req.userId) return res.status(403).json({ error: 'FORBIDDEN' });
 
-    const updated = await prisma.post.update({
-      where: { id },
-      data: { title, content },
-    });
-    res.json(updated);
-  }
-);
+  const { title, content, barrio, pricePyg, contactWhatsapp } = req.body;
+  const updated = await prisma.post.update({
+    where: { id: req.params.id },
+    data: {
+      ...(title !== undefined ? { title } : {}),
+      ...(content !== undefined ? { content } : {}),
+      ...(barrio !== undefined ? { barrio } : {}),
+      ...(pricePyg !== undefined ? { pricePyg } : {}),
+      ...(contactWhatsapp !== undefined ? { contactWhatsapp } : {}),
+    },
+  });
+  res.json(updated);
+});
 
-// DELETE /api/posts/:id
+// DELETE /api/posts/:id (auth; own posts)
 router.delete('/:id', requireAuth, async (req, res) => {
-  const { id } = req.params;
+  const existing = await prisma.post.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: 'NOT_FOUND' });
+  if (existing.authorId !== req.userId) return res.status(403).json({ error: 'FORBIDDEN' });
 
-  const post = await prisma.post.findUnique({ where: { id } });
-  if (!post) return res.status(404).json({ error: 'Post not found' });
-  if (post.authorId !== req.userId) return res.status(403).json({ error: 'Not your post' });
-
-  await prisma.post.delete({ where: { id } });
+  await prisma.post.delete({ where: { id: req.params.id } });
   res.json({ ok: true });
 });
 

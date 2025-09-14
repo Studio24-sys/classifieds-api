@@ -1,4 +1,3 @@
-// api/index.js
-// Vercel serverless entry in CommonJS, matching app.js export
-const app = require('../app.js');
-module.exports = app;
+// api/index.js (ESM entry for Vercel)
+import app from '../app.js';
+export default app;
