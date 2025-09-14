@@ -1,58 +1,39 @@
-import express from 'express';
-import cors from 'cors';
-import morgan from 'morgan';
-import dotenv from 'dotenv';
+// app.js
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
 
-// load env
-dotenv.config();
+const authRouter = require('./src/routes/auth.routes');
+const postsRouter = require('./src/routes/posts.routes');
+const usersRouter = require('./src/routes/user.routes'); // 👈 new line
 
 const app = express();
 
-// ---------- CORS CONFIG ----------
-const allowed = (process.env.FRONTEND_ORIGIN || 'http://localhost:3000')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
+app.use(cors());
+app.use(bodyParser.json());
 
-const corsOptions = {
-  origin(origin, cb) {
-    if (!origin) return cb(null, true);              // allow curl/vercel/health
-    if (allowed.includes(origin)) return cb(null, true);
-    return cb(null, false);                          // deny silently, no crash
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: false,
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
-};
-
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
-// ----------------------------------
-
-// logging
-app.use(morgan('dev'));
-app.use(express.json());
-
-// health check
+// Health check
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, message: 'Server is alive' });
 });
 
-// routes
-import postsRoutes from './src/routes/posts.routes.js';
-import authRoutes from './src/routes/auth.routes.js';
-app.use('/api/posts', postsRoutes);
-app.use('/api/auth', authRoutes);
+// Routes
+app.use('/api/auth', authRouter);
+app.use('/api/posts', postsRouter);
+app.use('/api/users', usersRouter); // 👈 mount the users routes
 
-// export for vercel
-export default app;
+// Error handling (optional)
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'SERVER_ERROR' });
+});
 
-// local dev listener
+// Export for Vercel or start locally
 if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 4000;
   app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`API running on http://localhost:${PORT}`);
   });
 }
+
+module.exports = app;
