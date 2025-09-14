@@ -1,24 +1,16 @@
 import express from 'express';
 import cors from 'cors';
+import debugRouter from '../src/routes/debug.routes.js';
 
 const app = express();
 
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, message: 'MINIMAL express alive' });
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, message: 'Server + debug alive' });
 });
 
-app.get('/api/_whoami', (req, res) => {
-  res.json({
-    node: process.version,
-    env: {
-      NODE_ENV: process.env.NODE_ENV ?? null,
-      PORT: process.env.PORT ?? null,
-    },
-    now: new Date().toISOString(),
-  });
-});
+app.use('/api/debug', debugRouter);
 
 export default app;
