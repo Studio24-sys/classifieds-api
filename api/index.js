@@ -8,7 +8,7 @@ app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, message: 'Server + debug alive' });
+  res.json({ ok: true, message: 'MINIMAL express + debug alive' });
 });
 
 app.use('/api/debug', debugRouter);
