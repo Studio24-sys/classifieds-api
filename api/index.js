@@ -1,42 +1,29 @@
-import express from 'express';
-import cors from 'cors';
-import jwt from 'jsonwebtoken';
-
-import authRouter  from '../src/routes/auth.routes.js';
-import usersRouter from '../src/routes/user.routes.js';
-import postsRouter from '../src/routes/posts.routes.js';
-
-const app = express();
-
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
-app.use(express.json({ limit: '1mb' }));
-
-// 🔐 Minimal auth middleware just for routes that need it
-function authz(req, res, next) {
+// GET /api/posts (public list) — hotfix
+app.get('/api/posts', async (req, res) => {
   try {
-    const h = req.headers.authorization || '';
-    const token = h.startsWith('Bearer ') ? h.slice(7) : null;
-    if (!token) return res.status(401).json({ error: 'UNAUTHENTICATED' });
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.auth = { userId: payload.userId };
-    next();
-  } catch (e) {
-    return res.status(401).json({ error: 'INVALID_TOKEN' });
+    const { PrismaClient } = await import('../src/prisma/client.js').catch(async () => {
+      // fallback if you import @prisma/client directly elsewhere
+      const { PrismaClient } = await import('@prisma/client'); 
+      return { PrismaClient };
+    });
+    const prisma = new PrismaClient();
+
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 50);
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await Promise.all([
+      prisma.post.findMany({
+        skip, take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: { author: { select: { id: true, email: true } } },
+      }),
+      prisma.post.count(),
+    ]);
+
+    res.json({ page, limit, total, totalPages: Math.max(Math.ceil(total / limit), 1), items });
+  } catch (err) {
+    console.error('GET /api/posts hotfix error:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
-}
-
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, message: 'MINIMAL express + routers alive' });
 });
-
-// Mount routers
-app.use('/api/auth',  authRouter);
-app.use('/api/users', usersRouter);
-
-// ✅ Apply auth only to POSTs on /api/posts; GET stays public
-app.use('/api/posts', (req, res, next) => {
-  if (req.method === 'POST') return authz(req, res, next);
-  return next();
-}, postsRouter);
-
-export default app;
