@@ -1,47 +1,75 @@
+// src/routes/posts.routes.js
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+
 const router = express.Router();
+const prisma = new PrismaClient();
 
-// GET / (existing) … keep as you have it
+// ---------- PUBLIC: list posts ----------
+router.get('/', async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 50);
+    const skip = (page - 1) * limit;
 
-// CREATE post (hardened)
+    const [items, total] = await Promise.all([
+      prisma.post.findMany({
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: { author: { select: { id: true, email: true } } },
+      }),
+      prisma.post.count(),
+    ]);
+
+    res.json({
+      page,
+      limit,
+      total,
+      totalPages: Math.max(Math.ceil(total / limit), 1),
+      items,
+    });
+  } catch (err) {
+    console.error('GET /api/posts error:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+// ---------- AUTH’D ONLY: create post ----------
 router.post('/', async (req, res) => {
   try {
-    if (!req.auth?.userId) {
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (!token) return res.status(401).json({ error: 'UNAUTHENTICATED' });
+
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    } catch {
       return res.status(401).json({ error: 'UNAUTHENTICATED' });
     }
 
-    const { title, content, barrio, pricePyg, contactWhatsapp } = req.body;
-
+    const { title, content, barrio, pricePyg, contactWhatsapp } = req.body || {};
     if (!title || !content) {
-      return res.status(400).json({ error: 'MISSING_FIELDS', fields: ['title', 'content'] });
+      return res.status(400).json({ error: 'MISSING_FIELDS' });
     }
 
-    const data = {
-      title: String(title).slice(0, 200),
-      content: String(content).slice(0, 10000),
-      authorId: req.auth.userId,
-    };
+    const post = await prisma.post.create({
+      data: {
+        title,
+        content,
+        barrio: barrio ?? null,
+        pricePyg: typeof pricePyg === 'number' ? pricePyg : null,
+        contactWhatsapp: contactWhatsapp ?? null,
+        author: { connect: { id: payload.userId } },
+      },
+    });
 
-    if (barrio) data.barrio = String(barrio).slice(0, 100);
-
-    if (pricePyg !== undefined && pricePyg !== null && String(pricePyg).trim() !== '') {
-      const n = Number(pricePyg);
-      if (Number.isFinite(n) && n >= 0) data.pricePyg = Math.trunc(n);
-    }
-
-    if (contactWhatsapp) {
-      // keep only digits, trim to reasonable length
-      const digits = String(contactWhatsapp).replace(/\D/g, '').slice(0, 20);
-      if (digits) data.contactWhatsapp = digits;
-    }
-
-    const created = await prisma.post.create({ data });
-    return res.status(201).json(created);
-  } catch (e) {
-    console.error('POST /api/posts error:', e);
-    return res.status(500).json({ error: 'INTERNAL_ERROR', detail: e?.message || 'unknown' });
+    res.status(201).json(post);
+  } catch (err) {
+    console.error('POST /api/posts error:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
 
