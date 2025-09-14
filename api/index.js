@@ -1,7 +1,4 @@
 // api/index.js
-import app from '../app.js';
-
-// Vercel serverless handler – Express app is a request handler
-export default function handler(req, res) {
-  return app(req, res);
-}
+// Vercel serverless entry in CommonJS, matching app.js export
+const app = require('../app.js');
+module.exports = app;
