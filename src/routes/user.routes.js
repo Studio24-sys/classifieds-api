@@ -1,37 +1,39 @@
 // src/routes/user.routes.js
 const express = require('express');
-const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const auth = require('../middleware/auth'); // <- verifies JWT and sets req.user.userId
+const auth = require('../middleware/auth');
 
-// GET /api/users/me  -> current user's profile
+const router = express.Router();
+const prisma = new PrismaClient();
+
+/**
+ * GET /api/users/me
+ * Returns the current user (id, email, name, createdAt)
+ */
 router.get('/me', auth, async (req, res) => {
   try {
-    const userId = req.user?.userId;
-    if (!userId) return res.status(401).json({ error: 'UNAUTHORIZED' });
-
+    const userId = req.userId;
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, name: true, createdAt: true },
     });
-
     if (!user) return res.status(404).json({ error: 'NOT_FOUND' });
-    return res.json(user);
-  } catch (err) {
-    console.error('GET /users/me error:', err);
-    return res.status(500).json({ error: 'SERVER_ERROR' });
+    res.json(user);
+  } catch (e) {
+    console.error('GET /users/me error:', e);
+    res.status(500).json({ error: 'SERVER_ERROR' });
   }
 });
 
-// GET /api/users/me/posts?page=1&limit=10 -> current user's posts (paginated)
+/**
+ * GET /api/users/me/posts?page=&limit=
+ * Lists posts authored by the current user (paginated)
+ */
 router.get('/me/posts', auth, async (req, res) => {
   try {
-    const userId = req.user?.userId;
-    if (!userId) return res.status(401).json({ error: 'UNAUTHORIZED' });
-
+    const userId = req.userId;
     const page = Math.max(parseInt(req.query.page || '1', 10), 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit || '10', 10), 1), 50);
+    const limit = Math.max(parseInt(req.query.limit || '10', 10), 1);
     const skip = (page - 1) * limit;
 
     const [total, items] = await Promise.all([
@@ -45,6 +47,7 @@ router.get('/me/posts', auth, async (req, res) => {
           id: true,
           title: true,
           content: true,
+          // If your latest migration is deployed in prod, you can expose these:
           barrio: true,
           pricePyg: true,
           contactWhatsapp: true,
@@ -53,11 +56,16 @@ router.get('/me/posts', auth, async (req, res) => {
       }),
     ]);
 
-    const totalPages = Math.max(Math.ceil(total / limit), 1);
-    return res.json({ page, limit, total, totalPages, items });
-  } catch (err) {
-    console.error('GET /users/me/posts error:', err);
-    return res.status(500).json({ error: 'SERVER_ERROR' });
+    res.json({
+      page,
+      limit,
+      total,
+      totalPages: Math.max(Math.ceil(total / limit), 1),
+      items,
+    });
+  } catch (e) {
+    console.error('GET /users/me/posts error:', e);
+    res.status(500).json({ error: 'SERVER_ERROR' });
   }
 });
 
